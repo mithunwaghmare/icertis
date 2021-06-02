@@ -1,0 +1,154 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
+namespace IcertisTest
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Please enter threee digit billing ID");
+            var deptID = Console.ReadLine();
+
+            if (int.TryParse(deptID, out int billNumber))
+            {
+                if (billNumber > 99 && billNumber < 1000)
+                {
+                    CheckCustomerData(billNumber);
+                }
+                else
+                    Console.WriteLine("The billing number sould be 3 digit number");
+            }
+            else
+                Console.WriteLine("Entered value is not a number");
+
+            Console.ReadKey();
+        }
+
+        static async void CheckCustomerData(int billId)
+        {
+            var billing = await GetBillingData(billId);
+            var customer = await GetCustomerData();
+
+            var custNotAvailable = customer.Where(x => !billing.Any(y => y.BillAmnt < 450 && y.BillAmnt > 650)).ToList();
+
+            var compare = customer.Where(x => !billing.Any(y => y.CustID == x.CustID)).ToList();
+
+            foreach (var cust in compare)
+            {
+                Console.WriteLine("Plan info missing for customer - " + cust.CustID + " ");
+            }
+
+            foreach (var cust in custNotAvailable)
+            {
+                Console.WriteLine("Silver Plan - " + cust.CustID + " ");
+            }
+        }
+
+        static async Task<List<Billing>> GetBillingData(int billID)
+        {
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    client.BaseAddress = new Uri("https://assessments.reliscore.com/");
+                    client.DefaultRequestHeaders.Accept.Clear();
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                    HttpResponseMessage responseBilling = await client.GetAsync("api/billing/" + billID + "/");
+                    if (responseBilling.IsSuccessStatusCode)
+                    {
+                        var billing = await responseBilling.Content.ReadAsStringAsync();
+                        JObject jObject = JObject.Parse(billing);
+                        JToken jUser = jObject["data"];
+                        await Task.Delay(5);
+                        List<Billing> custBilling = new List<Billing>();
+                        foreach (JProperty prop in jUser)
+                        {
+                            Billing bill = new Billing();
+                            bill.CustID = prop.Name;
+                            bill.BillAmnt = Convert.ToInt32(prop.Value);
+
+                            custBilling.Add(bill);
+                        }
+                        var customer = GetCustomerData();
+                        return custBilling;
+                    }
+                    else
+                    {
+                        Console.WriteLine("API Error");
+                        return null;
+                    }
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("API Error");
+                return null;
+            }
+        }
+
+        static async Task<List<Customer>> GetCustomerData()
+        {
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    client.BaseAddress = new Uri("https://assessments.reliscore.com/");
+                    client.DefaultRequestHeaders.Accept.Clear();
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                    HttpResponseMessage responseBilling = await client.GetAsync("api/customers/");
+                    if (responseBilling.IsSuccessStatusCode)
+                    {
+                        var billing = await responseBilling.Content.ReadAsStringAsync();
+                        JObject jObject = JObject.Parse(billing);
+                        JToken jUser = jObject["data"];
+                        await Task.Delay(5);
+                        List<Customer> customer = new List<Customer>();
+                        foreach (JProperty prop in jUser)
+                        {
+                            Customer bill = new Customer();
+                            bill.CustID = prop.Name;
+                            bill.Plan = prop.Value.ToString();
+
+                            customer.Add(bill);
+                        }
+                        return customer;
+                    }
+                    else
+                    {
+                        Console.WriteLine("API Error");
+                        return null;
+                    }
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("API Error");
+                return null;
+            }
+        }
+
+        public class Billing
+        {
+            public string CustID { get; set; }
+            public int BillAmnt { get; set; }
+        }
+
+        public class Customer
+        {
+            public string CustID { get; set; }
+            public string Plan { get; set; }
+        }
+    }
+}
